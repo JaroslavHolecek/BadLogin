@@ -228,6 +228,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo instanceof PDO) {
                 $current_user = null;
                 showroom_add_message($messages, 'success', 'Účet byl zrušen.');
                 break;
+
+            case 'soft_delete_account':
+                if ($current_user === null) {
+                    throw new Bl_Exception(Bl_Exception::USER_ERROR, 'Nejste přihlášen.');
+                }
+                if (!bl_db_soft_delete_user((int) $current_user['id'], $pdo, $bl_config)) {
+                    throw new Bl_Exception(Bl_Exception::SYSTEM_ERROR, 'Soft delete se nepodařil.');
+                }
+                bl_auth_logout();
+                showroom_clear_login_timestamp();
+                $current_user = null;
+                showroom_add_message($messages, 'success', 'Účet byl anonymizován (soft delete) a session byla ukončena.');
+                break;
         }
     } catch (Throwable $e) {
         showroom_add_message($messages, 'error', $e instanceof Bl_Exception ? $e->getMessage() : $e->getMessage());
@@ -656,6 +669,17 @@ $linktoken_hint_url = $pdo instanceof PDO ? bl_linktoken_build_login_url('TOKEN_
                         name="action" value="delete_account"><button class="btn danger" type="submit">Zrušit
                         účet</button></form>
                 <p class="inline-note">Po zrušení účtu dojde i k odhlášení.</p>
+                <?php endif; ?>
+            </section>
+            <section class="card">
+                <h2>Soft delete účtu</h2>
+                <?php if ($current_user === null): ?>
+                <p>Nejprve se přihlas.</p>
+                <?php else: ?>
+                <form method="post" onsubmit="return confirm('Opravdu chcete anonymizovat tento účet?');"><input type="hidden"
+                        name="action" value="soft_delete_account"><button class="btn danger" type="submit">Anonymizovat
+                        účet</button></form>
+                <p class="inline-note">Osobní údaje budou smazány, záznam v DB zůstane. Po akci dojde k odhlášení.</p>
                 <?php endif; ?>
             </section>
             <section class="card">

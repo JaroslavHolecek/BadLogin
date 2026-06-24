@@ -20,7 +20,7 @@ function bl_db_find_user_by(string $where_clause, array $params, PDO $pdo, array
         SELECT id, email, password_hash, is_email_verified, created_at,
                linktoken_hash, linktoken_expires_at
         FROM {$table}
-        WHERE {$where_clause}
+        WHERE deleted_at IS NULL AND {$where_clause}
     ");
 
     $stmt->execute($params);
@@ -45,15 +45,15 @@ function bl_db_find_user_by_id(int $user_id, PDO $pdo, array $bl_config): ?array
         $pdo, $bl_config);
 }
 
-    /**
-     * Finds a user by email address.
-     *
-     * @param string $email     Email address.
-     * @param PDO    $pdo       Database connection.
-     * @param array  $bl_config BadLogin configuration.
-     *
-     * @return array|null Matching user row, or null when not found.
-     */
+/**
+ * Finds a user by email address.
+ *
+ * @param string $email     Email address.
+ * @param PDO    $pdo       Database connection.
+ * @param array  $bl_config BadLogin configuration.
+ *
+ * @return array|null Matching user row, or null when not found.
+ */
 function bl_db_find_user_by_email(string $email, PDO $pdo, array $bl_config): ?array
 {
     return bl_db_find_user_by(
@@ -61,15 +61,15 @@ function bl_db_find_user_by_email(string $email, PDO $pdo, array $bl_config): ?a
         $pdo, $bl_config);
 }
 
-    /**
-     * Finds a user by the stored hash of a login token.
-     *
-     * @param string $token_hash Token hash.
-     * @param PDO    $pdo        Database connection.
-     * @param array  $bl_config  BadLogin configuration.
-     *
-     * @return array|null Matching user row, or null when not found.
-     */
+/**
+ * Finds a user by the stored hash of a login token.
+ *
+ * @param string $token_hash Token hash.
+ * @param PDO    $pdo        Database connection.
+ * @param array  $bl_config  BadLogin configuration.
+ *
+ * @return array|null Matching user row, or null when not found.
+ */
 function bl_db_find_user_by_linktoken_hash(string $token_hash, PDO $pdo, array $bl_config): ?array
 {
     return bl_db_find_user_by(
@@ -77,16 +77,16 @@ function bl_db_find_user_by_linktoken_hash(string $token_hash, PDO $pdo, array $
         $pdo, $bl_config);
 }
 
-    /**
-     * Creates a new user row.
-     *
-     * @param string      $email         User email address.
-     * @param string|null $password_hash Optional password hash.
-     * @param PDO         $pdo           Database connection.
-     * @param array       $bl_config     BadLogin configuration.
-     *
-     * @return int ID of the newly created user.
-     */
+/**
+ * Creates a new user row.
+ *
+ * @param string      $email         User email address.
+ * @param string|null $password_hash Optional password hash.
+ * @param PDO         $pdo           Database connection.
+ * @param array       $bl_config     BadLogin configuration.
+ *
+ * @return int ID of the newly created user.
+ */
 function bl_db_create_user(string $email, ?string $password_hash, PDO $pdo, array $bl_config): int
 {
     $table = bl_config_get('_table_login', $bl_config);
@@ -207,6 +207,22 @@ function bl_db_set_password_hash(int $user_id, string $password_hash, PDO $pdo, 
 }
 
 /**
+ * Soft-deletes a user by anonymizing personal data via the database function.
+ *
+ * @param int   $user_id   User ID.
+ * @param PDO   $pdo       Database connection.
+ * @param array $bl_config BadLogin configuration.
+ *
+ * @return bool True when the update succeeds.
+ */
+function bl_db_soft_delete_user(int $user_id, PDO $pdo, array $bl_config): bool
+{
+    $stmt = $pdo->prepare("SELECT soft_delete_bl_login(:id)");
+
+    return $stmt->execute(['id' => $user_id]);
+}
+
+/**
  * Deletes a user row.
  *
  * @param int   $user_id   User ID.
@@ -228,3 +244,4 @@ function bl_db_delete_user(int $user_id, PDO $pdo, array $bl_config): bool
         'id' => $user_id,
     ]);
 }
+

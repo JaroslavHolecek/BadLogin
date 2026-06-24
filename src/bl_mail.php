@@ -16,14 +16,16 @@ function bl_mail_send(string $to, string $subject, string $body, array $bl_confi
 {
     $mail_from = bl_config_get('mail_from', $bl_config);
 
+    $sanitize = static fn(string $v): string => str_replace(["\r", "\n"], '', $v);
+
     $headers = [
         'MIME-Version: 1.0',
         'Content-Type: text/html; charset=UTF-8',
     ];
-    
+
     if ($mail_from !== '') {
-        $headers[] = 'From: ' . $mail_from;
+        $headers[] = 'From: ' . $sanitize($mail_from);
     }
 
-    return mail($to, $subject, $body, implode("\r\n", $headers));
+    return mail($to, $sanitize($subject), $body, implode("\r\n", $headers));
 }

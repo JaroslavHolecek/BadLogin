@@ -113,12 +113,9 @@ function bl_auth_login_with_password(string $email, string $password, PDO $pdo, 
     $email = bl_auth_refine_email($email);
 
     $user = bl_db_find_user_by_email($email, $pdo, $bl_config);
-    if ($user === null) {
-        throw new Bl_Exception(Bl_Exception::USER_ERROR, 'Tento účet neexistuje.');
-    }
 
-    if ($user['password_hash'] === null || $user['password_hash'] === '') {
-        throw new Bl_Exception(Bl_Exception::USER_ERROR, 'Heslo není nastaveno. Použijte přihlášení pomocí odkazu do emailu.');
+    if ($user === null || $user['password_hash'] === null || $user['password_hash'] === '') {
+        throw new Bl_Exception(Bl_Exception::USER_ERROR, 'Neplatné přihlašovací údaje.');
     }
 
     if (!password_verify($password, $user['password_hash'])) {
@@ -168,26 +165,33 @@ function bl_auth_request_linktoken_login(string $email, PDO $pdo, array $bl_conf
         $create_if_missing = bl_config_get('_linktoken_create_user_if_missing', $bl_config);
 
         if (!$create_if_missing) {
-            throw new Bl_Exception(Bl_Exception::USER_ERROR, 'Tento účet neexistuje.');
+            // Neodhalujeme, zda email existuje — tiché selhání brání user enumeration.
+            return true;
         }
 
-        $user_id = bl_db_create_user($email, null, $pdo, $bl_config);
-    }else {
+        $pdo->beginTransaction();
+        try {
+            $user_id = bl_db_create_user($email, null, $pdo, $bl_config);
+            $token_data = bl_linktoken_generate_data($bl_config);
+            $saved = bl_db_set_linktoken($user_id, $token_data['token_hash'], $token_data['expires_at'], $pdo, $bl_config);
+            if (!$saved) {
+                $pdo->rollBack();
+                throw new Bl_Exception(Bl_Exception::SYSTEM_ERROR, 'Nepodařilo se uložit token pro přihlášení pomocí emailu.');
+            }
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    } else {
         $user_id = (int) $user['id'];
-    }
-
-    $ttl_minutes = (int) bl_config_get('_linktoken_ttl_minutes', $bl_config);
-    $token_data = bl_linktoken_generate_data($bl_config);
-
-    $saved = bl_db_set_linktoken(
-        $user_id,
-        $token_data['token_hash'],
-        $token_data['expires_at'],
-        $pdo,
-        $bl_config);
-
-    if (!$saved) {
-        throw new Bl_Exception(Bl_Exception::SYSTEM_ERROR, 'Nepodařilo se uložit token pro přihlášení pomocí emailu.');
+        $token_data = bl_linktoken_generate_data($bl_config);
+        $saved = bl_db_set_linktoken($user_id, $token_data['token_hash'], $token_data['expires_at'], $pdo, $bl_config);
+        if (!$saved) {
+            throw new Bl_Exception(Bl_Exception::SYSTEM_ERROR, 'Nepodařilo se uložit token pro přihlášení pomocí emailu.');
+        }
     }
 
     $linktoken_login_url = bl_linktoken_build_login_url($token_data['token'], $bl_config);
@@ -227,11 +231,11 @@ function bl_auth_login_with_linktoken(string $token, PDO $pdo, array $bl_config)
         return null;
     }
 
-    bl_session_login((int) $user['id'], $bl_config);
-
     bl_db_clear_linktoken((int) $user['id'], $pdo, $bl_config);
 
     bl_db_set_email_verified((int) $user['id'], true, $pdo, $bl_config);
+
+    bl_session_login((int) $user['id'], $bl_config);
 
     return bl_auth_current_user_db_data($pdo, $bl_config);
 }
@@ -313,9 +317,5 @@ function bl_auth_delete_current_user(PDO $pdo, array $bl_config): bool
  */
 function bl_auth_delete_user_by_id(int $user_id, PDO $pdo, array $bl_config): bool
 {
-    if ($user_id === null) {
-        throw new Bl_Exception(Bl_Exception::SYSTEM_ERROR, 'Neplatný uživatelský ID.');
-    }
-
-    return bl_db_delete_user($user_id, $pdo, $bl_config);;
+    return bl_db_delete_user($user_id, $pdo, $bl_config);
 }
